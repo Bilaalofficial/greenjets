@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: db-config
+  namespace: dev
+data:
+  POSTGRES_HOST: "84.235.242.14"
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB: "greenjets"
+  POSTGRES_USER: "greenjets"

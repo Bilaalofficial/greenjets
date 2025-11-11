@@ -1,0 +1,49 @@
+trigger:
+  branches:
+    include:
+      - main
+
+pool:
+  vmImage: 'ubuntu-22.04'
+
+variables:
+- name: DOCKER_BUILDKIT
+  value: 1
+  
+jobs:
+  - job: Build_and_Push
+    displayName: 'Build and Push Docker Images'
+    steps:
+      - checkout: self
+
+      - task: Docker@2
+        inputs:
+          containerRegistry: 'OCI'
+          repository: 'axnlavgecioy/greenjets'
+          Dockerfile: 'frontend/Dockerfile'
+          tags: 'frontends_latest'
+          command: 'buildAndPush'
+
+      - task: Docker@2
+        inputs:
+          containerRegistry: 'OCI'
+          repository: 'axnlavgecioy/greenjets'
+          Dockerfile: 'Dockerfile'
+          tags: 'backends_latest'
+          command: 'buildAndPush'
+
+  - job: Deploy_to_k8
+    displayName: 'Deploy to Kubernetes'
+    steps:
+      - task: Kubernetes@1
+        inputs:
+          connectionType: 'Kubernetes Service Connection'
+          kubernetesServiceEndpoint: 'KUBE'
+          namespace: 'prod'
+          command: 'login'
+          
+      - script: |
+          kubectl rollout restart deployment backend-deployment -n prod
+          sleep 60
+          kubectl rollout restart deployment frontend-deployment -n prod
+          kubectl get svc -n prod

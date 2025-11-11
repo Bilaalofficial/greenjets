@@ -1,0 +1,1 @@
+python3 GraphFiles/PythonFiles/generate_plot.py $1 $2
