@@ -50,7 +50,7 @@ pipeline {
                 echo "Deploying to EC2 at ${params.EC2_HOST}"
                 sshagent([EC2_SSH_CREDENTIALS]) {
                     sh """
-                    ssh -o StrictHostKeyChecking=no ubuntu${params.EC2_HOST} '
+                    ssh -o StrictHostKeyChecking=no ubuntu@${params.EC2_HOST} '
                         cd /home/ubuntu/greenjets &&
                         sudo docker compose pull &&
                         sudo docker compose down &&
