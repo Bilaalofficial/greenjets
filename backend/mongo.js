@@ -3,7 +3,7 @@ const { Client } = require('pg');
 const dbConfig = {
     user: 'bradmin',
     password: '123',
-    host: '13.235.13.46',
+    host: '65.0.31.9',
     port: '5432',
     database: 'dash_backup',
 };
