@@ -1,1 +1,10 @@
 node_modules
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.backup
+crash.log
+override.tf
+override.tf.json
+terraform.rc
+.terraform.lock.hcl
