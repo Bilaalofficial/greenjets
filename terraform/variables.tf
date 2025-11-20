@@ -7,7 +7,7 @@ variable "instance_type" {
 }
 
 variable "ssh_key_name" {
-  default = "my-key1"
+  default = "my-key"
 }
 
 variable "project_name" {
