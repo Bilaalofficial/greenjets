@@ -3,32 +3,63 @@ pipeline {
 
     environment {
         DOCKERHUB_CREDENTIALS = credentials('dockerhub-credentials')
-        EC2_SSH_CREDENTIALS   = 'ec2-ssh-key'
-        DOCKER_USER           = "${DOCKERHUB_CREDENTIALS_USR}"
-        DOCKER_PASS           = "${DOCKERHUB_CREDENTIALS_PSW}"
+        EC2_SSH_CREDENTIALS   = 'my-key'     // must match Terraform key_name
+
+        DOCKER_USER = "${DOCKERHUB_CREDENTIALS_USR}"
+        DOCKER_PASS = "${DOCKERHUB_CREDENTIALS_PSW}"
     }
 
     stages {
 
+        /* -----------------------------
+         * 1. Clone Repository
+         * ----------------------------- */
         stage('Checkout Code') {
             steps {
                 git branch: 'main', url: 'https://github.com/Bilaalofficial/greenjets.git'
             }
         }
 
-        stage('Get EC2 IP from Terraform') {
+        /* -----------------------------
+         * 2. Terraform Init + Apply
+         * ----------------------------- */
+        stage('Terraform Init & Apply') {
             steps {
                 script {
-                    EC2_HOST = sh(
-                        script: "terraform -chdir=terraform output -raw ec2_public_ip",
-                        returnStdout: true
-                    ).trim()
-
-                    echo "EC2 Host found: ${EC2_HOST}"
+                    sh """
+                        terraform -chdir=terraform init
+                        terraform -chdir=terraform apply -auto-approve
+                    """
                 }
             }
         }
 
+        /* -----------------------------
+         * 3. Extract EC2 Public IP
+         * ----------------------------- */
+        stage('Get EC2 IP from Terraform') {
+            steps {
+                script {
+                    EC2_HOST = sh(
+                        script: """
+                            terraform -chdir=terraform output -raw ec2_public_ip \
+                            | sed 's/\\x1b\\[[0-9;]*m//g' | tr -d '\\e'
+                        """,
+                        returnStdout: true
+                    ).trim()
+
+                    if (!EC2_HOST || EC2_HOST == "") {
+                        error "❌ Terraform did not return a valid EC2 public IP!"
+                    }
+
+                    echo "✔ EC2 Host: ${EC2_HOST}"
+                }
+            }
+        }
+
+        /* -----------------------------
+         * 4. Build Backend Image
+         * ----------------------------- */
         stage('Build Backend Docker Image') {
             steps {
                 sh """
@@ -37,6 +68,9 @@ pipeline {
             }
         }
 
+        /* -----------------------------
+         * 5. Build Frontend Image
+         * ----------------------------- */
         stage('Build Frontend Docker Image') {
             steps {
                 sh """
@@ -45,32 +79,42 @@ pipeline {
             }
         }
 
+        /* -----------------------------
+         * 6. Push Images to Docker Hub
+         * ----------------------------- */
         stage('Login & Push to Docker Hub') {
             steps {
                 sh """
                 echo ${DOCKER_PASS} | docker login -u ${DOCKER_USER} --password-stdin
+
                 docker push ${DOCKER_USER}/greenjets-backend:latest
                 docker push ${DOCKER_USER}/greenjets-frontend:latest
                 """
             }
         }
 
+        /* -----------------------------
+         * 7. Deploy on EC2
+         * ----------------------------- */
         stage('Deploy to EC2') {
             steps {
                 sshagent([EC2_SSH_CREDENTIALS]) {
                     sh """
-                    ssh -o StrictHostKeyChecking=no ubuntu@${EC2_HOST} '
-                        cd /home/ubuntu/greenjets &&
-                        sudo docker compose pull &&
-                        sudo docker compose down &&
-                        sudo docker compose up -d
-                    '
+                        ssh -o StrictHostKeyChecking=no ubuntu@${EC2_HOST} '
+                            cd /home/ubuntu/greenjets &&
+                            sudo docker compose pull &&
+                            sudo docker compose down &&
+                            sudo docker compose up -d
+                        '
                     """
                 }
             }
         }
     }
 
+    /* -----------------------------
+     * 8. Cleanup (Always Runs)
+     * ----------------------------- */
     post {
         always {
             echo "🧹 Cleaning Docker cache..."
