@@ -2,42 +2,36 @@ pipeline {
     agent any
 
     environment {
-    DOCKERHUB_CREDENTIALS = credentials('dockerhub-credentials')
-    EC2_SSH_CREDENTIALS   = 'my-key'   // must match Terraform key_name
+        DOCKERHUB_CREDENTIALS = credentials('dockerhub-credentials')
+        EC2_SSH_CREDENTIALS   = 'my-key'   // must match Jenkins credentials ID
 
-    // Docker Hub
-    DOCKER_USER = "${DOCKERHUB_CREDENTIALS_USR}"
-    DOCKER_PASS = "${DOCKERHUB_CREDENTIALS_PSW}"
+        // Docker Hub
+        DOCKER_USER = "${DOCKERHUB_CREDENTIALS_USR}"
+        DOCKER_PASS = "${DOCKERHUB_CREDENTIALS_PSW}"
 
-    // AWS Credentials (MUST BE ADDED IN JENKINS)
-    AWS_CREDS = credentials('aws-credentials')  // <-- you must create this
+        // AWS Credentials (from Jenkins)
+        AWS_CREDS = credentials('aws-credentials')
 
-    AWS_ACCESS_KEY_ID     = "${AWS_CREDS_USR}"
-    AWS_SECRET_ACCESS_KEY = "${AWS_CREDS_PSW}"
-    AWS_REGION            = "ap-south-1"
-}
-
+        AWS_ACCESS_KEY_ID     = "${AWS_CREDS_USR}"
+        AWS_SECRET_ACCESS_KEY = "${AWS_CREDS_PSW}"
+        AWS_REGION            = "ap-south-1"
+    }
 
     stages {
 
-        /* -----------------------------
-         * 1. Clone Repository
-         * ----------------------------- */
+        /* 1. Clone Repository */
         stage('Checkout Code') {
             steps {
                 git branch: 'main', url: 'https://github.com/Bilaalofficial/greenjets.git'
             }
         }
 
+        /* Print all ENV variables */
         stage('DEBUG — Print Environment') {
-    steps {
-        sh "printenv | sort"
-    }
-}
+            steps { sh "printenv | sort" }
+        }
 
-        /* -----------------------------
-         * 2. Terraform Init + Apply
-         * ----------------------------- */
+        /* 2. Terraform Init + Apply */
         stage('Terraform Init & Apply') {
             steps {
                 script {
@@ -49,9 +43,7 @@ pipeline {
             }
         }
 
-        /* -----------------------------
-         * 3. Extract EC2 Public IP
-         * ----------------------------- */
+        /* 3. Get Terraform EC2 IP */
         stage('Get EC2 IP from Terraform') {
             steps {
                 script {
@@ -72,9 +64,7 @@ pipeline {
             }
         }
 
-        /* -----------------------------
-         * 4. Build Backend Image
-         * ----------------------------- */
+        /* 4. Build Backend Image */
         stage('Build Backend Docker Image') {
             steps {
                 sh """
@@ -83,9 +73,7 @@ pipeline {
             }
         }
 
-        /* -----------------------------
-         * 5. Build Frontend Image
-         * ----------------------------- */
+        /* 5. Build Frontend Image */
         stage('Build Frontend Docker Image') {
             steps {
                 sh """
@@ -94,9 +82,7 @@ pipeline {
             }
         }
 
-        /* -----------------------------
-         * 6. Push Images to Docker Hub
-         * ----------------------------- */
+        /* 6. Push Images */
         stage('Login & Push to Docker Hub') {
             steps {
                 sh """
@@ -108,28 +94,41 @@ pipeline {
             }
         }
 
-        /* -----------------------------
-         * 7. Deploy on EC2
-         * ----------------------------- */
+        /* 7. Deploy to EC2 (AUTO CREATE docker-compose.yml) */
         stage('Deploy to EC2') {
             steps {
                 sshagent([EC2_SSH_CREDENTIALS]) {
                     sh """
-                        ssh -o StrictHostKeyChecking=no ubuntu@${EC2_HOST} '
-                            cd /home/ubuntu/greenjets &&
-                            sudo docker compose pull &&
-                            sudo docker compose down &&
-                            sudo docker compose up -d
-                        '
+                    ssh -o StrictHostKeyChecking=no ubuntu@${EC2_HOST} '
+                        mkdir -p /home/ubuntu/greenjets &&
+                        cd /home/ubuntu/greenjets &&
+
+                        # Auto create docker-compose.yml
+                        cat > docker-compose.yml << EOF
+version: "3.8"
+services:
+  backend:
+    image: ${DOCKER_USER}/greenjets-backend:latest
+    ports:
+      - "5000:5000"
+
+  frontend:
+    image: ${DOCKER_USER}/greenjets-frontend:latest
+    ports:
+      - "3000:3000"
+EOF
+
+                        sudo docker compose pull
+                        sudo docker compose down || true
+                        sudo docker compose up -d
+                    '
                     """
                 }
             }
         }
     }
 
-    /* -----------------------------
-     * 8. Cleanup (Always Runs)
-     * ----------------------------- */
+    /* 8. Cleanup */
     post {
         always {
             echo "🧹 Cleaning Docker cache..."
