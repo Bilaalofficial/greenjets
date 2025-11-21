@@ -2,12 +2,21 @@ pipeline {
     agent any
 
     environment {
-        DOCKERHUB_CREDENTIALS = credentials('dockerhub-credentials')
-        EC2_SSH_CREDENTIALS   = 'my-key'     // must match Terraform key_name
+    DOCKERHUB_CREDENTIALS = credentials('dockerhub-credentials')
+    EC2_SSH_CREDENTIALS   = 'my-key'   // must match Terraform key_name
 
-        DOCKER_USER = "${DOCKERHUB_CREDENTIALS_USR}"
-        DOCKER_PASS = "${DOCKERHUB_CREDENTIALS_PSW}"
-    }
+    // Docker Hub
+    DOCKER_USER = "${DOCKERHUB_CREDENTIALS_USR}"
+    DOCKER_PASS = "${DOCKERHUB_CREDENTIALS_PSW}"
+
+    // AWS Credentials (MUST BE ADDED IN JENKINS)
+    AWS_CREDS = credentials('aws-credentials')  // <-- you must create this
+
+    AWS_ACCESS_KEY_ID     = "${AWS_CREDS_USR}"
+    AWS_SECRET_ACCESS_KEY = "${AWS_CREDS_PSW}"
+    AWS_REGION            = "ap-south-1"
+}
+
 
     stages {
 
@@ -19,6 +28,12 @@ pipeline {
                 git branch: 'main', url: 'https://github.com/Bilaalofficial/greenjets.git'
             }
         }
+
+        stage('DEBUG — Print Environment') {
+    steps {
+        sh "printenv | sort"
+    }
+}
 
         /* -----------------------------
          * 2. Terraform Init + Apply
